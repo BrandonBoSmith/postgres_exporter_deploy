@@ -1,0 +1,66 @@
+---
+- hosts: all
+  become: yes
+  vars:
+    pg_version: '0.15.0'
+  tasks:
+  
+  #- name: Create postgres_exporter user
+  #  user:
+  #    name: postgres_exporter
+  #    shell: /sbin/nologin
+  #    create_home: no
+  #    system: true
+  #    state: present
+
+  - name: Download postgres_exporter
+    unarchive:
+      src: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ pg_version }}/postgres_exporter-{{ pg_version }}.linux-amd64.tar.gz"
+      dest: /tmp/
+      remote_src: yes
+
+  - name: Create /opt/postgres_exporter
+    file:
+      path: /opt/postgres_exporter
+      state: directory
+      owner: postgres
+
+  - name: Copy postgres_exporter to directory
+    copy:
+      dest: /opt/postgres_exporter
+      src: "/tmp/postgres_exporter-{{ pg_version }}.linux-amd64/postgres_exporter"
+      mode: '770'
+      remote_src: true
+      owner: postgres_exporter
+
+  - name: Create systemd service
+    template:
+      dest: /etc/systemd/system/postgres_exporter.service
+      force: yes
+      src: postgres_exporter.service.j2
+    notify:
+    - reload systemd
+
+  - name: Setup environment
+    template:
+      dest: /opt/postgres_exporter/.env
+      src: env.j2
+      force: yes
+      owner: postgres
+      group: postgres
+      mode: '644'
+    notify:
+    - restart postgres_exporter
+
+  handlers:
+  - name: reload systemd
+    systemd:
+      name: postgres_exporter
+      daemon_reload: true
+      state: restarted
+
+  - name: restart postgres_exporter
+    systemd:
+      name: postgres_exporter
+      enabled: true
+      state: restarted
